@@ -1,0 +1,31 @@
+# Python/runtime
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local secrets and runtime config
+.env
+.env.*
+!.env.example
+config.json
+config/*.json
+!config/*.example.json
+
+# Runtime data
+*.log
+database/*.db
+database/*.db-*
+database/backups/
+
+# Generated analysis output
+analytics/output/
+
+# Local/editor noise
+.DS_Store
+.idea/
+.vscode/

@@ -1,0 +1,11 @@
+{
+  "token": "DISCORD_BOT_TOKEN_PLACEHOLDER",
+  "prefix": "&",
+  "application_id": "DISCORD_APPLICATION_ID_PLACEHOLDER",
+  "owners": [
+    "DISCORD_OWNER_ID_PLACEHOLDER"
+  ],
+  "invite_permissions": "326417632256",
+  "openai_token": "",
+  "openai_model": "gpt-4o-mini"
+}

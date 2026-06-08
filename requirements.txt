@@ -1,0 +1,7 @@
+discord.py
+aiosqlite
+aiohttp
+python-dotenv
+openai
+requests
+spnkr

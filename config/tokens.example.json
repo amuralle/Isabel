@@ -1,0 +1,7 @@
+{
+  "access_token": "HALO_ACCESS_TOKEN_PLACEHOLDER",
+  "refresh_token": "HALO_REFRESH_TOKEN_PLACEHOLDER",
+  "expires_at": "1970-01-01T00:00:00",
+  "spartan_token": "HALO_SPARTAN_TOKEN_PLACEHOLDER",
+  "clearance_token": "HALO_CLEARANCE_TOKEN_PLACEHOLDER"
+}
