@@ -1,3 +1,4 @@
+import asyncio
 import os
 import json
 from datetime import datetime
@@ -8,6 +9,9 @@ import aiosqlite
 
 DB_PATH = f"{os.path.realpath(os.path.dirname(__file__))}/../database/database.db"
 DB_SCHEMA_PATH = f"{os.path.realpath(os.path.dirname(__file__))}/../database/schema.sql"
+DB_BUSY_TIMEOUT_MS = int(os.getenv("ISABEL_DB_BUSY_TIMEOUT_MS", "5000"))
+_MIGRATIONS_READY_PATHS: set[str] = set()
+_MIGRATION_LOCK = asyncio.Lock()
 EVENT_PUBLIC_ID_NAMESPACE = uuid.UUID("3c7fe4bd-66ea-4f17-98fe-869f0c3ea1a5")
 CELO_SCORE_MIN = 900
 CELO_SCORE_MAX = 2500
@@ -221,7 +225,30 @@ async def _column_exists(db: aiosqlite.Connection, table: str, column: str) -> b
     return any(str(r[1]) == column for r in rows)
 
 
+async def _configure_connection(db: aiosqlite.Connection) -> None:
+    await db.execute(f"PRAGMA busy_timeout = {DB_BUSY_TIMEOUT_MS}")
+    await db.execute("PRAGMA foreign_keys = ON")
+
+
+async def _connection_main_path(db: aiosqlite.Connection) -> str | None:
+    cursor = await db.execute("PRAGMA database_list")
+    rows = await cursor.fetchall()
+    for row in rows:
+        if str(row[1]) == "main" and row[2]:
+            return os.path.realpath(str(row[2]))
+    return None
+
+
 async def _run_migrations(db: aiosqlite.Connection) -> None:
+    await _configure_connection(db)
+    migration_key = await _connection_main_path(db)
+    if migration_key and migration_key in _MIGRATIONS_READY_PATHS:
+        return
+
+    async with _MIGRATION_LOCK:
+        if migration_key and migration_key in _MIGRATIONS_READY_PATHS:
+            return
+
     if not await _column_exists(db, "events", "opponent_guild_id"):
         await db.execute("ALTER TABLE events ADD COLUMN opponent_guild_id TEXT")
     if not await _column_exists(db, "events", "public_id"):
@@ -578,10 +605,14 @@ async def _run_migrations(db: aiosqlite.Connection) -> None:
             "UPDATE events SET public_id = ? WHERE id = ?",
             (_build_event_public_id(event_id), event_id),
         )
+    if migration_key:
+        _MIGRATIONS_READY_PATHS.add(migration_key)
 
 
 async def init_db() -> None:
-    async with aiosqlite.connect(DB_PATH) as db:
+    async with aiosqlite.connect(DB_PATH, timeout=10) as db:
+        await db.execute("PRAGMA journal_mode=WAL")
+        await _configure_connection(db)
         with open(DB_SCHEMA_PATH, "r", encoding="utf-8") as schema_file:
             await db.executescript(schema_file.read())
         await _run_migrations(db)

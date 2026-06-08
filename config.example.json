@@ -1,6 +1,7 @@
 {
   "token": "DISCORD_BOT_TOKEN_PLACEHOLDER",
   "prefix": "&",
+  "enable_message_content_intent": false,
   "application_id": "DISCORD_APPLICATION_ID_PLACEHOLDER",
   "owners": [
     "DISCORD_OWNER_ID_PLACEHOLDER"
@@ -8,6 +9,10 @@
   "invite_permissions": "326417632256",
   "openai_token": "",
   "openai_model": "gpt-4o-mini",
+  "ask_isabel_max_prompt_chars": 1200,
+  "ask_isabel_max_output_tokens": 350,
+  "ask_isabel_user_cooldown_seconds": 60,
+  "ask_isabel_guild_cooldown_seconds": 10,
   "mainframe_guild_ids": [],
   "mainframe_guild_id": "",
   "mainframe_event_dump_channel_id": "",

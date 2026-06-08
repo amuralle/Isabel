@@ -9,7 +9,7 @@ Isabel is a multi-guild Discord bot for cross-community Halo event tracking and 
 - XUID linking and Halo match ingestion
 - Event career statistics, logged match medals, combat leaderboards, and CELO
 - CELO ladder with dynamic K-factor and confidence-style deviation
-- Hybrid commands: slash + prefix `&`
+- Slash-first command surface; prefix commands are opt-in for deployments that deliberately enable Discord's message content intent
 
 ## Project Layout
 
@@ -33,8 +33,8 @@ Isabel is a multi-guild Discord bot for cross-community Halo event tracking and 
 3. Copy `config.example.json` to `config.json` and fill required values:
    - `token`: Discord bot token
    - `application_id`: Isabel Discord application ID
-   - `prefix`: `&`
    - `owners`: Discord user IDs allowed to run owner-only commands
+   - `enable_message_content_intent`: leave `false` unless you explicitly want legacy prefix commands
 4. If using Halo match ingestion, copy `config/tokens.example.json` to `config/tokens.json` and populate it with local Halo/spnkr tokens.
 5. Run:
    - `python bot.py`
@@ -59,38 +59,49 @@ The default lower-permission invite value in `config.example.json` is `326417632
 
 If a server wants Isabel to clean up stale bot-authored match embeds during operation-report refreshes, add `Manage Messages`. That changes the permissions value to `326417640448`. Without it, Isabel can still function, but refreshed reports may accumulate duplicate or stale bot-generated match cards.
 
+## Abuse Controls
+
+`/ask_isabel` is capped by default to reduce cost and spam risk:
+
+- Prompt length: `ask_isabel_max_prompt_chars`
+- Output tokens: `ask_isabel_max_output_tokens`
+- Per-user cooldown: `ask_isabel_user_cooldown_seconds`
+- Per-guild cooldown: `ask_isabel_guild_cooldown_seconds`
+
+Owners can bypass the cooldowns for operational troubleshooting, but the input and output caps still apply.
+
 ## Initial Commands
 
-- `&help`
-- `&clan_setup_help`
-- `&register_clan`
-- `&unregister_clan`
-- `&clan_profile`
-- `&registered_clans`
-- `&clan_roster`
-- `&set_allegiance` (run in the target server)
-- `&my_allegiances`
-- `&link_xuid <gamertag> [xuid]`
-- `&bulk_register <roster>`
-- `&unlink_xuid <xuid>`
-- `&my_xuids [member_id]`
-- `&set_event_channel <#forum>`
-- `&add_event_reporter_role <@role>`
-- `&remove_event_reporter_role <@role>`
-- `&list_event_reporter_roles`
-- `&report_event`
-- `&import_cortana_event <cortana_event_id> <opponent_clan_id> [category] [post_reports]`
-- `&recalc_event_celo <event_id>`
-- `&career [member]`
-- `&combat_profile [member] [scope]`
-- `&combat_leaderboard [board] [limit] [scope]`
-- `&medal_report [member] [scope]`
-- `&backfill_medals [limit]` (owner-only)
-- `&celo [member_id]`
-- `&celo_models`
-- `&celo_leaderboard [limit] [model]`
-- `&ask_isabel <prompt>`
-- `&invite_isabel`
+- `/help`
+- `/clan_setup_help`
+- `/register_clan`
+- `/unregister_clan`
+- `/clan_profile`
+- `/registered_clans`
+- `/clan_roster`
+- `/set_allegiance` (run in the target server)
+- `/my_allegiances`
+- `/link_xuid <gamertag> [xuid]`
+- `/bulk_register <roster>`
+- `/unlink_xuid <xuid>`
+- `/my_xuids [member_id]`
+- `/set_event_channel <#forum>`
+- `/add_event_reporter_role <@role>`
+- `/remove_event_reporter_role <@role>`
+- `/list_event_reporter_roles`
+- `/report_event`
+- `/import_cortana_event <cortana_event_id> <opponent_clan_id> [category] [post_reports]`
+- `/recalc_event_celo <event_id>`
+- `/career [member]`
+- `/combat_profile [member] [scope]`
+- `/combat_leaderboard [board] [limit] [scope]`
+- `/medal_report [member] [scope]`
+- `/backfill_medals [limit]` (owner-only)
+- `/celo [member_id]`
+- `/celo_models`
+- `/celo_leaderboard [limit] [model]`
+- `/ask_isabel <prompt>`
+- `/invite_isabel`
 
 ## Cortana Compatibility
 
@@ -139,7 +150,7 @@ Historical raid backfill work is analytics-only. Candidate historical raids shou
   - `report_event` is DM-driven and requires a linked XUID.
   - In DM flow, choose recent matches from linked XUID history or paste manual match IDs.
 - Operation report broadcast:
-  - Configure a report forum per guild with `&set_event_channel`.
+  - Configure a report forum per guild with `/set_event_channel`.
   - On successful report, Isabel posts the operation report as forum threads for both participating guilds.
 
 ## Notes

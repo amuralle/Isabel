@@ -1,3 +1,6 @@
+import asyncio
+import time
+
 from discord.ext import commands
 
 
@@ -28,42 +31,90 @@ SYSTEM_PROMPT = (
 class Assistant(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        config = getattr(bot, "config", {})
+        self.max_prompt_chars = _config_int(config, "ask_isabel_max_prompt_chars", 1200, minimum=100)
+        self.max_output_tokens = _config_int(config, "ask_isabel_max_output_tokens", 350, minimum=50, maximum=1000)
+        self.user_cooldown_seconds = _config_int(config, "ask_isabel_user_cooldown_seconds", 60, minimum=0)
+        self.guild_cooldown_seconds = _config_int(config, "ask_isabel_guild_cooldown_seconds", 10, minimum=0)
+        self._user_last_used: dict[int, float] = {}
+        self._guild_last_used: dict[int, float] = {}
+        self._cooldown_lock = asyncio.Lock()
+
+    async def _send_private(self, ctx: commands.Context, message: str) -> None:
+        is_interaction = ctx.interaction is not None
+        if is_interaction and not ctx.interaction.response.is_done():
+            await ctx.interaction.response.send_message(message, ephemeral=True)
+        elif is_interaction:
+            await ctx.interaction.followup.send(message, ephemeral=True)
+        else:
+            await ctx.send(message)
+
+    async def _check_rate_limit(self, ctx: commands.Context) -> int:
+        now = time.monotonic()
+        guild_id = ctx.guild.id if ctx.guild else 0
+        owner_ids = {str(owner_id) for owner_id in getattr(self.bot, "config", {}).get("owners", [])}
+        if str(ctx.author.id) in owner_ids:
+            return 0
+
+        async with self._cooldown_lock:
+            remaining = 0
+            if self.user_cooldown_seconds:
+                elapsed = now - self._user_last_used.get(ctx.author.id, 0.0)
+                remaining = max(remaining, int(self.user_cooldown_seconds - elapsed))
+            if guild_id and self.guild_cooldown_seconds:
+                elapsed = now - self._guild_last_used.get(guild_id, 0.0)
+                remaining = max(remaining, int(self.guild_cooldown_seconds - elapsed))
+            if remaining > 0:
+                return remaining
+            self._user_last_used[ctx.author.id] = now
+            if guild_id:
+                self._guild_last_used[guild_id] = now
+            return 0
 
     @commands.hybrid_command(name="ask_isabel", description="Ask Isabel about CELO, events, or policy.")
     async def ask_isabel(self, ctx: commands.Context, *, prompt: str):
         client = getattr(self.bot, "openai_client", None)
         model = getattr(self.bot, "openai_model", "gpt-4o-mini")
         is_interaction = ctx.interaction is not None
+        prompt = (prompt or "").strip()
 
         if client is None:
-            if is_interaction and not ctx.interaction.response.is_done():
-                await ctx.interaction.response.send_message(
-                    "OpenAI client is not configured for this bot.",
-                    ephemeral=True,
-                )
-            elif is_interaction:
-                await ctx.interaction.followup.send(
-                    "OpenAI client is not configured for this bot.",
-                    ephemeral=True,
-                )
-            else:
-                await ctx.send("OpenAI client is not configured for this bot.")
+            await self._send_private(ctx, "OpenAI client is not configured for this bot.")
+            return
+
+        if not prompt:
+            await self._send_private(ctx, "Give Isabel a question to answer.")
+            return
+
+        if len(prompt) > self.max_prompt_chars:
+            await self._send_private(
+                ctx,
+                f"That prompt is too long. Keep /ask_isabel under {self.max_prompt_chars:,} characters.",
+            )
+            return
+
+        remaining = await self._check_rate_limit(ctx)
+        if remaining > 0:
+            await self._send_private(ctx, f"Isabel is cooling down. Try again in {remaining} second(s).")
             return
 
         if is_interaction and not ctx.interaction.response.is_done():
             await ctx.interaction.response.defer(thinking=True)
 
         try:
-            response = client.chat.completions.create(
+            response = await asyncio.to_thread(
+                client.chat.completions.create,
                 model=model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.3,
-                max_tokens=400,
+                max_tokens=self.max_output_tokens,
             )
             text = (response.choices[0].message.content or "").strip()
+            if len(text) > 1900:
+                text = f"{text[:1897]}..."
             if is_interaction:
                 await ctx.interaction.followup.send(text or "No response generated.")
             else:
@@ -78,3 +129,15 @@ class Assistant(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Assistant(bot))
+
+
+def _config_int(config: dict, key: str, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        value = int(config.get(key, default))
+    except (TypeError, ValueError):
+        value = default
+    if minimum is not None:
+        value = max(minimum, value)
+    if maximum is not None:
+        value = min(maximum, value)
+    return value

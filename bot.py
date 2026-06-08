@@ -25,6 +25,14 @@ with open(CONFIG_PATH, "r", encoding="utf-8") as cfg_file:
     config = json.load(cfg_file)
 
 
+def config_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def build_logger() -> logging.Logger:
     logger = logging.getLogger("isabel")
     logger.setLevel(logging.INFO)
@@ -48,14 +56,16 @@ class IsabelBot(commands.Bot):
     def __init__(self):
         intents = discord.Intents.default()
         intents.members = True
-        intents.message_content = True
+        message_content_enabled = config_bool(config.get("enable_message_content_intent"), False)
+        intents.message_content = message_content_enabled
 
         prefix = config.get("prefix", "&")
+        command_prefix = commands.when_mentioned_or(prefix) if message_content_enabled else commands.when_mentioned
         application_id_raw = str(config.get("application_id", "0"))
         application_id = int(application_id_raw) if application_id_raw.isdigit() else 0
 
         super().__init__(
-            command_prefix=commands.when_mentioned_or(prefix),
+            command_prefix=command_prefix,
             intents=intents,
             help_command=None,
             application_id=application_id if application_id > 0 else None,
@@ -63,6 +73,8 @@ class IsabelBot(commands.Bot):
 
         self.logger = build_logger()
         self.config = config
+        self.prefix = prefix
+        self.message_content_enabled = message_content_enabled
         self.synced_once = False
         self.status_messages = cycle(
             [
@@ -104,6 +116,11 @@ class IsabelBot(commands.Bot):
 
     async def on_ready(self):
         self.logger.info("Isabel connected as %s (%s)", self.user, self.user.id if self.user else "unknown")
+        self.logger.info(
+            "Message content intent is %s. Prefix commands are %s.",
+            "enabled" if self.message_content_enabled else "disabled",
+            f"enabled with prefix {self.prefix!r}" if self.message_content_enabled else "disabled; slash commands remain primary",
+        )
         if not self.synced_once:
             synced = await self.tree.sync()
             self.synced_once = True
