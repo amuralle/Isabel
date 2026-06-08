@@ -14,10 +14,18 @@ venv/
 !.env.example
 config.json
 config/*.json
+tokens.json
+tokens_old.json
+*token*.json
+*secret*.json
 !config/*.example.json
 
 # Runtime data
 *.log
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
 database/*.db
 database/*.db-*
 database/backups/

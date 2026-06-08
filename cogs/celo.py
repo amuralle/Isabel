@@ -1,3 +1,5 @@
+import os
+
 import discord
 from discord.ext import commands
 
@@ -14,7 +16,20 @@ MODEL_ALIASES = {
     "raid": "raid_stepwise",
     "raid_stepwise": "raid_stepwise",
 }
-MAINFRAME_GUILD_IDS = {"1493977543915868304"}
+
+
+def _configured_mainframe_guild_ids(bot: commands.Bot) -> set[str]:
+    config = getattr(bot, "config", {}) or {}
+    configured = os.getenv("ISABEL_MAINFRAME_GUILD_IDS") or config.get("mainframe_guild_ids")
+    if configured is None:
+        configured = config.get("mainframe_guild_id")
+    if isinstance(configured, (list, tuple, set)):
+        return {str(value).strip() for value in configured if str(value).strip()}
+    return {
+        part.strip()
+        for part in str(configured or "").split(",")
+        if part.strip()
+    }
 
 
 class CELOLeaderboardView(discord.ui.View):
@@ -203,7 +218,7 @@ class CELO(commands.Cog):
                 label = config["label"]
                 break
 
-        guild_scope_id = None if str(ctx.guild.id) in MAINFRAME_GUILD_IDS else str(ctx.guild.id)
+        guild_scope_id = None if str(ctx.guild.id) in _configured_mainframe_guild_ids(self.bot) else str(ctx.guild.id)
         scope_label = "Global CELO Mainframe" if guild_scope_id is None else ctx.guild.name
 
         view = CELOLeaderboardView(

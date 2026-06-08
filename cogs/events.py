@@ -1,6 +1,7 @@
 import re
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 
@@ -16,17 +17,32 @@ VALID_OUTCOMES = {"WIN": "Win", "LOSS": "Loss", "DRAW": "Draw", "N/A": "N/A", "N
 CANCEL_KEYWORDS = {"cancel", "/cancel", "exit", "/exit"}
 EVENT_CATEGORIES = ["Raid"]
 CONFIG_PATH = Path(__file__).resolve().parents[1] / "config.json"
-MAINFRAME_GUILD_ID = "1493977543915868304"
-MAINFRAME_EVENT_DUMP_CHANNEL_ID = "1493977777500590140"
-MAINFRAME_TICKETS_CHANNEL_ID = "1493978211116257280"
+
+
+def _load_runtime_config() -> dict:
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as cfg_file:
+            return json.load(cfg_file)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+_RUNTIME_CONFIG = _load_runtime_config()
+MAINFRAME_GUILD_ID = str(os.getenv("ISABEL_MAINFRAME_GUILD_ID") or _RUNTIME_CONFIG.get("mainframe_guild_id") or "")
+MAINFRAME_EVENT_DUMP_CHANNEL_ID = str(
+    os.getenv("ISABEL_MAINFRAME_EVENT_DUMP_CHANNEL_ID")
+    or _RUNTIME_CONFIG.get("mainframe_event_dump_channel_id")
+    or ""
+)
+MAINFRAME_TICKETS_CHANNEL_ID = str(
+    os.getenv("ISABEL_MAINFRAME_TICKETS_CHANNEL_ID")
+    or _RUNTIME_CONFIG.get("mainframe_tickets_channel_id")
+    or ""
+)
 
 
 def _load_owner_ids() -> set[str]:
-    try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as cfg_file:
-            cfg = json.load(cfg_file)
-    except (OSError, json.JSONDecodeError):
-        return set()
+    cfg = _load_runtime_config()
     return {str(x) for x in cfg.get("owners", [])}
 
 
@@ -453,6 +469,8 @@ class Events(commands.Cog):
         details: str,
         report_jump_url: str | None = None,
     ) -> str | None:
+        if not MAINFRAME_TICKETS_CHANNEL_ID:
+            return None
         ticket_label = self._format_ticket_label(contest_id)
         target = self.bot.get_channel(int(MAINFRAME_TICKETS_CHANNEL_ID))
         if target is None:
@@ -519,6 +537,8 @@ class Events(commands.Cog):
         return None
 
     async def _dump_event_to_mainframe(self, event: dict) -> str | None:
+        if not MAINFRAME_EVENT_DUMP_CHANNEL_ID:
+            return None
         target = self.bot.get_channel(int(MAINFRAME_EVENT_DUMP_CHANNEL_ID))
         if target is None:
             return None
