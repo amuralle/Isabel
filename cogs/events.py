@@ -103,10 +103,25 @@ class Events(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.owner_ids = _load_owner_ids()
+        self._active_report_flows: dict[str, float] = {}
+        self._report_flow_lock = asyncio.Lock()
         self.contest_report_view = ContestReportView(self)
         self.ticket_control_view = TicketControlView(self)
         self.bot.add_view(self.contest_report_view)
         self.bot.add_view(self.ticket_control_view)
+
+    async def _begin_report_flow(self, user_id: str) -> bool:
+        now = time.monotonic()
+        async with self._report_flow_lock:
+            started_at = self._active_report_flows.get(str(user_id))
+            if started_at and now - started_at < 1800:
+                return False
+            self._active_report_flows[str(user_id)] = now
+            return True
+
+    async def _end_report_flow(self, user_id: str) -> None:
+        async with self._report_flow_lock:
+            self._active_report_flows.pop(str(user_id), None)
 
     def _parse_outcome(self, raw: str) -> str:
         return VALID_OUTCOMES.get((raw or "").strip().upper(), "N/A")
@@ -1172,24 +1187,33 @@ class Events(commands.Cog):
             )
             return
 
-        await self._send_ctx(
-            ctx,
-            "Check your DMs to continue the event report.",
-            ephemeral=bool(ctx.interaction),
-        )
-
-        try:
-            dm = await ctx.author.create_dm()
-        except discord.Forbidden:
+        if not await self._begin_report_flow(str(ctx.author.id)):
             await self._send_ctx(
                 ctx,
-                "I could not DM you. Enable DMs from server members, then try again.",
+                "You already have an event report in progress. Finish it in DMs, or type `cancel` there before starting another.",
                 ephemeral=bool(ctx.interaction),
             )
             return
 
         single_guild_test_mode = False
         try:
+            await self._send_ctx(
+                ctx,
+                "Check your DMs to continue the event report.",
+                ephemeral=bool(ctx.interaction),
+            )
+
+            try:
+                dm = await ctx.author.create_dm()
+            except discord.Forbidden:
+                await self._send_ctx(
+                    ctx,
+                    "I could not DM you. Enable DMs from server members, then try again.",
+                    ephemeral=bool(ctx.interaction),
+                )
+                await self._end_report_flow(str(ctx.author.id))
+                return
+
             await dm.send(
                 "You may cancel at any time by typing `cancel`.\n"
                 "Let’s build this event report."
@@ -1216,6 +1240,7 @@ class Events(commands.Cog):
             opponent_choices, single_guild_test_mode = await self._opponent_guild_choices(str(ctx.guild.id))
             if not opponent_choices:
                 await dm.send("No selectable opponent clans found. Register clans first.")
+                await self._end_report_flow(str(ctx.author.id))
                 return
 
             opponent_lines = []
@@ -1257,6 +1282,7 @@ class Events(commands.Cog):
             match_id_list = await self._collect_match_ids_via_dm(dm, ctx.author, xuid)
             if not match_id_list:
                 await dm.send("No matches added. Event report cancelled.")
+                await self._end_report_flow(str(ctx.author.id))
                 return
 
         except asyncio.TimeoutError:
@@ -1265,6 +1291,7 @@ class Events(commands.Cog):
                 "DM flow timed out. Run `/report_event` again when ready.",
                 ephemeral=bool(ctx.interaction),
             )
+            await self._end_report_flow(str(ctx.author.id))
             return
         except asyncio.CancelledError:
             await self._send_ctx(
@@ -1272,6 +1299,7 @@ class Events(commands.Cog):
                 "Event report cancelled in DM. No data was saved.",
                 ephemeral=bool(ctx.interaction),
             )
+            await self._end_report_flow(str(ctx.author.id))
             return
 
         post_dm_started_at = time.perf_counter()
@@ -1285,6 +1313,7 @@ class Events(commands.Cog):
                 ctx,
                 "Cannot log this event because one or more matches are already recorded:\n" + "\n".join(lines)
             )
+            await self._end_report_flow(str(ctx.author.id))
             return
 
         await self._defer_ctx(ctx)
@@ -1320,6 +1349,7 @@ class Events(commands.Cog):
                 f"Event ingest failed on match `{match_id}` ({type(exc).__name__}). "
                 "No data was saved for this event."
             )
+            await self._end_report_flow(str(ctx.author.id))
             return
 
         celo_started_at = time.perf_counter()
@@ -1382,11 +1412,12 @@ class Events(commands.Cog):
             lines.append("")
             lines.append(
                 "**Reports:** none posted (no report forums configured/reachable). "
-                "Use `&set_event_channel` in participating guilds."
+                "Use `/set_event_channel` in participating guilds."
             )
 
         await dm.send("\n".join(lines))
         await self._send_ctx(ctx, "\n".join(lines))
+        await self._end_report_flow(str(ctx.author.id))
 
     @commands.hybrid_command(
         name="import_cortana_event",
