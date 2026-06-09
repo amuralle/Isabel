@@ -178,6 +178,7 @@ async def import_cortana_event(
                 """,
                 (str(row["xuid"]), row.get("gamertag"), row.get("discord_id")),
             )
+            await isabel_db._refresh_xuid_gamertag(isabel, str(row["xuid"]), row.get("gamertag"))
         await isabel.commit()
 
     if not new_games:

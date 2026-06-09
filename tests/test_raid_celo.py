@@ -286,6 +286,79 @@ class CeloSeedTests(unittest.IsolatedAsyncioTestCase):
             db.DB_PATH = original_path
             tmp.cleanup()
 
+    async def test_upsert_xuid_refreshes_related_gamertag_copies(self):
+        original_path = db.DB_PATH
+        tmp = tempfile.TemporaryDirectory()
+        path = Path(tmp.name) / "isabel.db"
+        try:
+            async with aiosqlite.connect(path) as conn:
+                with open(db.DB_SCHEMA_PATH, "r", encoding="utf-8") as handle:
+                    await conn.executescript(handle.read())
+                await db._run_migrations(conn)
+                await conn.execute(
+                    """
+                    INSERT INTO guild_registry (guild_id, guild_name, registered_by, is_active)
+                    VALUES ('guild-1', 'Guild One', 'admin', 1)
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO users (discord_id)
+                    VALUES ('user-1')
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO xuids (xuid, gamertag, discord_id)
+                    VALUES ('x1', 'Old Tag', 'user-1')
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO clan_roster_xuids (guild_id, xuid, gamertag, registered_by, discord_id)
+                    VALUES ('guild-1', 'x1', 'Old Tag', 'admin', 'user-1')
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO xuid_celo_profiles (xuid, gamertag)
+                    VALUES ('x1', 'Old Tag')
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO xuid_celo_model_profiles (model_key, xuid, gamertag)
+                    VALUES ('official', 'x1', 'Old Tag')
+                    """
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO xuid_celo_seed_overrides (xuid, gamertag, seed_source)
+                    VALUES ('x1', 'Old Tag', 'user_tier')
+                    """
+                )
+                await conn.commit()
+
+            db.DB_PATH = str(path)
+            await db.upsert_xuid("x1", "New Tag", "user-1")
+
+            async with aiosqlite.connect(path) as conn:
+                conn.row_factory = aiosqlite.Row
+                xuid_row = (await conn.execute_fetchall("SELECT gamertag FROM xuids WHERE xuid = 'x1'"))[0]
+                roster_row = (await conn.execute_fetchall("SELECT gamertag FROM clan_roster_xuids WHERE xuid = 'x1'"))[0]
+                profile_row = (await conn.execute_fetchall("SELECT gamertag FROM xuid_celo_profiles WHERE xuid = 'x1'"))[0]
+                model_row = (await conn.execute_fetchall("SELECT gamertag FROM xuid_celo_model_profiles WHERE xuid = 'x1'"))[0]
+                seed_row = (await conn.execute_fetchall("SELECT gamertag FROM xuid_celo_seed_overrides WHERE xuid = 'x1'"))[0]
+
+            self.assertEqual(xuid_row["gamertag"], "New Tag")
+            self.assertEqual(roster_row["gamertag"], "New Tag")
+            self.assertEqual(profile_row["gamertag"], "New Tag")
+            self.assertEqual(model_row["gamertag"], "New Tag")
+            self.assertEqual(seed_row["gamertag"], "New Tag")
+        finally:
+            db.DB_PATH = original_path
+            tmp.cleanup()
+
 
 class ReplayMathTests(unittest.TestCase):
     def test_expected_score_is_symmetric(self):

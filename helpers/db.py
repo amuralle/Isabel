@@ -1129,6 +1129,7 @@ async def upsert_xuid(xuid: str, gamertag: str, discord_id: str) -> None:
             """,
             (str(xuid), str(gamertag), str(discord_id)),
         )
+        await _refresh_xuid_gamertag(db, str(xuid), str(gamertag))
         await db.commit()
 
 
@@ -1147,7 +1148,60 @@ async def upsert_xuid_identity(xuid: str, gamertag: str, discord_id: str | None 
             """,
             (str(xuid), str(gamertag), str(discord_id) if discord_id else None),
         )
+        await _refresh_xuid_gamertag(db, str(xuid), str(gamertag))
         await db.commit()
+
+
+async def _refresh_xuid_gamertag(db: aiosqlite.Connection, xuid: str, gamertag: str | None) -> None:
+    label = (gamertag or "").strip()
+    if not label:
+        return
+    await _run_migrations(db)
+    await db.execute(
+        """
+        UPDATE xuids
+        SET gamertag = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE xuid = ?
+        """,
+        (label, str(xuid)),
+    )
+    await db.execute(
+        """
+        UPDATE clan_roster_xuids
+        SET gamertag = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE xuid = ?
+        """,
+        (label, str(xuid)),
+    )
+    await db.execute(
+        """
+        UPDATE xuid_celo_profiles
+        SET gamertag = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE xuid = ?
+        """,
+        (label, str(xuid)),
+    )
+    await db.execute(
+        """
+        UPDATE xuid_celo_model_profiles
+        SET gamertag = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE xuid = ?
+        """,
+        (label, str(xuid)),
+    )
+    await db.execute(
+        """
+        UPDATE xuid_celo_seed_overrides
+        SET gamertag = ?,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE xuid = ?
+        """,
+        (label, str(xuid)),
+    )
 
 
 async def upsert_xuid_celo_seed_override(
