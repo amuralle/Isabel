@@ -27,6 +27,11 @@ async def lookup_match_stats_by_id(match_id: str):
         return await response.parse()
 
 
+async def refresh_halo_auth() -> None:
+    async with ClientSession() as session:
+        await spnkr_auth.get_authenticated_client(session)
+
+
 async def lookup_match_by_id(match_id: str) -> Dict[str, Union[str, float]]:
     async with ClientSession() as session:
         client = await spnkr_auth.get_authenticated_client(session)

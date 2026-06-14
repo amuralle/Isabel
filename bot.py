@@ -104,6 +104,7 @@ class IsabelBot(commands.Bot):
             "cogs.combat_intel",
             "cogs.celo",
             "cogs.assistant",
+            "cogs.auth_keepalive",
             "cogs.help",
         ]
 
