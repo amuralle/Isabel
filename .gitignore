@@ -16,12 +16,13 @@ config.json
 config/*.json
 tokens.json
 tokens_old.json
-*token*.json
+*token*.json*
 *secret*.json
 !config/*.example.json
 
 # Runtime data
 *.log
+*.out
 *.db
 *.db-*
 *.sqlite
